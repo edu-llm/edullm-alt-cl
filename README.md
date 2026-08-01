@@ -1,5 +1,7 @@
 # edullm-alt-cl
 
+**Repo:** https://github.com/GMatherne/edullm-alt-cl
+
 Alternate curriculum for **OLMo2-370M** on **RegMix-10B**: LR warmup on general pretrain → short HQ front-load (~100M tokens) → rest of pretrain.
 
 | Doc | What |
