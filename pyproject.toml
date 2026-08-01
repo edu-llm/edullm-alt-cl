@@ -1,0 +1,10 @@
+[project]
+name = "edullm-alt-cl"
+version = "0.1.0"
+description = "HQ front-load alternate curriculum for OLMo2-370M / RegMix-10B"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
