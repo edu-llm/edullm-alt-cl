@@ -6,10 +6,12 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-import torch
 
-from alt_cl.phases import math_fraction_for_step, phase_boundaries
-from alt_cl.streams import (
+# Same reason as tests/test_sft_data.py: alt_cl.streams imports torch at module scope.
+torch = pytest.importorskip("torch", reason="torch is not installed in the build gate venv")
+
+from alt_cl.phases import math_fraction_for_step, phase_boundaries  # noqa: E402
+from alt_cl.streams import (  # noqa: E402
     InfiniteBatchStream,
     MemmapTokenDataset,
     next_rank_input_ids,

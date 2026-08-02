@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "edullm-alt-cl"
 version = "0.1.0"
@@ -17,6 +21,16 @@ train = [
   "edullm-data @ git+https://github.com/edu-llm/edullm-data@v0.6.3",
 ]
 dev = ["pytest>=8.0"]
+
+# alt_cl is the only importable package this project distributes. configs/, launch/,
+# prompts/ and guides/ sit beside it at the repository root, which is a flat layout
+# setuptools refuses to guess at: without this table it finds five candidates and fails
+# the build rather than picking one. scripts/ stays out deliberately -- the platform
+# entry points in .edullm/ put the repository root on sys.path, so it is imported from
+# the working directory rather than from site-packages.
+[tool.setuptools.packages.find]
+include = ["alt_cl*"]
+namespaces = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

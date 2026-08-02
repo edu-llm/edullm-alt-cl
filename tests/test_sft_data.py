@@ -7,9 +7,13 @@ import json
 from pathlib import Path
 
 import pytest
-import torch
 
-from alt_cl.sft_data import (
+# alt_cl.sft_data imports torch at module scope, so this module cannot be collected
+# without it. The build gate installs only `.[dev]`, deliberately keeping a CUDA wheel off
+# the runner, so skip there rather than failing collection for the whole suite.
+pytest.importorskip("torch", reason="torch is not installed in the build gate venv")
+
+from alt_cl.sft_data import (  # noqa: E402
     IGNORE_INDEX,
     ConversationSFTDataset,
     load_tokenizer,
