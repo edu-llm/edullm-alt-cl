@@ -1,0 +1,8 @@
+# olmo-eval --harness-config for raw OLMo-core Trainer checkpoints.
+# Merged with -m <checkpoint_dir>: kind stays olmo_core; model comes from -m.
+name: alt-cl-olmo-core
+provider:
+  kind: olmo_core
+  tokenizer: allenai/dolma2-tokenizer
+  dtype: bfloat16
+  max_model_len: 2048

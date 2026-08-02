@@ -1,0 +1,49 @@
+# GSM8K / Minerva-MATH ladder vs SFT step for alt-cl arms.
+# Harness: edu-llm/olmo-eval-full via the olmo_core provider (raw Trainer ckpts).
+#
+# Dry-run plan:
+#   python -m scripts.eval_ladder --config configs/eval_math_ladder.yaml \
+#     --arm math-front-anneal \
+#     --checkpoint-dir s3://…/runs/<sft_run>/checkpoints \
+#     --base-checkpoint s3://…/runs/<pretrain_run>/checkpoints/step2408
+#
+# Launch (requires olmo-eval on PATH / in the olmo-eval-full image):
+#   python -m scripts.eval_ladder --config configs/eval_math_ladder.yaml \
+#     --arm math-front-anneal \
+#     --checkpoint-dir … --base-checkpoint … --launch
+
+run_id: math-eval-ladder-v1
+seed: 42069666
+output_dir: alt_cl/data/math_eval_ladder
+
+harness:
+  repository: https://github.com/edu-llm/olmo-eval-full
+  # Pin matches main @ 2026-08-01; bump deliberately when changing tasks/scoring.
+  revision: 37e81867d4d71c7c7343c63a3590f79bd43987c4
+  provider_kind: olmo_core
+  harness_config: configs/eval_harness_olmo_core.yaml
+  tokenizer: allenai/dolma2-tokenizer
+  # CLI binary (platform image / local install of olmo-eval-full)
+  cli: olmo-eval
+
+# Primary + secondary (hypothesis readout). Exact-match generative.
+tasks:
+  - gsm8k
+  - minerva_math
+
+# Opt-in with --include-optional (robustness / less MetaMath overlap).
+tasks_optional:
+  - gsm_symbolic
+
+ladder:
+  # Matches configs/math_sft_60m.yaml train.max_tokens / checkpoint_every_steps.
+  sft_total_steps: 228
+  sft_checkpoint_every: 25
+  # SFT step0 is a fresh-optim load of the base; prefer --base-checkpoint instead.
+  include_sft_step_zero: false
+  # OLMo-core Checkpointer.CHECKPOINT_DIR
+  checkpoint_dirname_template: "step{step}"
+
+arms:
+  - math-front-anneal
+  - math-anneal

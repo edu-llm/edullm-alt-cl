@@ -1,36 +1,56 @@
 #!/usr/bin/env bash
-# Launch one alt-CL arm on ephemeral scratch.
-# Required env: SAVE_FOLDER, PROGRESS_DIR
-# Optional: ARM (hq-frontload|control), ARM_ID, DATA_CACHE_DIR, NPROC, EXTRA_ARGS
+# Local / ad-hoc launch for one alt-CL pretrain arm.
+# For eduLLM platform submits, use .edullm/train_pretrain.py instead (see guides/platform-submit.md).
+#
+# Required env: OLMO_ROOT when LAUNCH=1 (unless olmo_core is already on PYTHONPATH)
+# Optional: CONFIG, SAVE_FOLDER / EDULLM_CHECKPOINT_DIR / OUTPUT_DIR,
+#           NPROC, EXTRA_ARGS, RESUME=1, DATA_CACHE_DIR, LAUNCH=0 (dry-run)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ARM="${ARM:-hq-frontload}"
-ARM_ID="${ARM_ID:-$ARM}"
-SAVE_FOLDER="${SAVE_FOLDER:?set SAVE_FOLDER}"
-PROGRESS_DIR="${PROGRESS_DIR:?set PROGRESS_DIR}"
-DATA_CACHE_DIR="${DATA_CACHE_DIR:-${TMPDIR:-/tmp}/edullm-data-cache-$$}"
+CONFIG="${CONFIG:-$ROOT/configs/math_front_anneal_10b.yaml}"
 NPROC="${NPROC:-1}"
-
-mkdir -p "$SAVE_FOLDER" "$PROGRESS_DIR" "$DATA_CACHE_DIR"
+OLMO_ROOT="${OLMO_ROOT:-}"
 
 ARGS=(
-  "$ROOT/train_hq_frontload_370m.py"
-  --arm "$ARM"
-  --arm-id "$ARM_ID"
-  --save-folder "$SAVE_FOLDER"
-  --progress-dir "$PROGRESS_DIR"
-  --data-cache-dir "$DATA_CACHE_DIR"
+  -m scripts.train_olmo
+  --config "$CONFIG"
 )
 
-# Local smoke: S3_EXPORT=0 ALLOW_LOCAL_ONLY=1
-if [[ "${S3_EXPORT:-1}" == "0" || "${ALLOW_LOCAL_ONLY:-0}" == "1" ]]; then
-  ARGS+=(--no-s3-export --allow-local-only)
+if [[ -n "$OLMO_ROOT" ]]; then
+  ARGS+=(--olmo-root "$OLMO_ROOT")
 fi
 
-# Optional: skip HQ publish for control or early smoke
-if [[ "${ALLOW_MISSING_HQ:-0}" == "1" ]]; then
-  ARGS+=(--allow-missing-hq)
+# Prefer explicit --save-folder so the flag is visible (matches platform checkpoint guard).
+SAVE="${EDULLM_CHECKPOINT_DIR:-${SAVE_FOLDER:-}}"
+if [[ -n "$SAVE" ]]; then
+  ARGS+=(--save-folder "$SAVE")
+  export SAVE_FOLDER="$SAVE"
+fi
+if [[ -n "${OUTPUT_DIR:-}" ]]; then
+  export OUTPUT_DIR
+fi
+if [[ -n "${EDULLM_RUN_ID:-}" ]]; then
+  export EDULLM_RUN_ID
+fi
+
+# Local smoke: set LAUNCH=0 to only print the plan JSON
+if [[ "${LAUNCH:-1}" == "1" ]]; then
+  if [[ -z "$OLMO_ROOT" ]]; then
+    if ! python -c "import olmo_core" >/dev/null 2>&1; then
+      echo "OLMO_ROOT must point at the pinned edu-llm/OLMo-core checkout (or install olmo_core)" >&2
+      exit 1
+    fi
+  fi
+  ARGS+=(--launch)
+fi
+
+if [[ "${RESUME:-0}" == "1" ]]; then
+  ARGS+=(--resume)
+fi
+
+if [[ -n "${DATA_CACHE_DIR:-}" ]]; then
+  ARGS+=(--data-cache-dir "$DATA_CACHE_DIR")
 fi
 
 if [[ -n "${EXTRA_ARGS:-}" ]]; then
@@ -40,7 +60,11 @@ fi
 
 cd "$ROOT"
 if [[ "$NPROC" -gt 1 ]]; then
-  exec torchrun --standalone --nproc_per_node="$NPROC" "${ARGS[@]}"
+  exec python -m torch.distributed.run --standalone --nproc_per_node="$NPROC" "${ARGS[@]}"
 else
-  exec python "${ARGS[@]}"
+  if [[ "${LAUNCH:-1}" == "1" ]]; then
+    exec python -m torch.distributed.run --standalone --nproc_per_node=1 "${ARGS[@]}"
+  else
+    exec python "${ARGS[@]}"
+  fi
 fi

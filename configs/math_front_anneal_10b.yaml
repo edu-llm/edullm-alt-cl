@@ -1,0 +1,55 @@
+# Treatment: warmup → exclusive math → bulk regmix → shared end anneal.
+# Train OLMo-2 370M from scratch via OLMo-core Trainer.
+
+run_id: math-front-anneal-10b-v1
+seed: 42069666
+output_dir: alt_cl/data/math_front_anneal_10b
+arm: math-front-anneal
+
+data:
+  regmix_dataset_id: pretrain/regmix-10b
+  math_dataset_id: pretrain/math-frontload-100m
+  tokenizer: allenai/dolma2-tokenizer
+  sequence_length: 2048
+
+s3:
+  # Informational only when $EDULLM_CHECKPOINT_DIR is unset.
+  # Platform writes under s3://sbsandbox-intern-edullm-outputs/teams/{team}/runs/{run_id}/
+  checkpoint_bucket: sbsandbox-intern-edullm-outputs
+  prefix: teams/pre-training/alt-cl/math-front-anneal-10b-v1
+  profile: sbsandbox
+
+model:
+  name: OLMo-2-370M-math-front-anneal
+  arch: olmo2_370M
+  init_mode: scratch
+  init_seed: 42069666
+  load_path: null
+
+olmo_core:
+  repository: https://github.com/edu-llm/OLMo-core
+  revision: 99e0009ed67679c90da970ec5ba439c9459e3757
+
+phases:
+  warmup_steps: 24
+  front_math_steps: 24
+  anneal_window_steps: 119
+  anneal_math_steps: 24
+
+train:
+  # Treatment = regmix 2384 steps + front math 24 = 2408 steps × 4_194_304
+  max_tokens: 10099884032
+  global_batch_size: 4194304
+  lr: 4.0e-4
+  warmup_steps: 24
+  lr_alpha_f: 1.0
+  data_loader_seed: 42069666
+  rank_microbatch_size: 65536
+  num_workers: 4
+  compile_model: true
+  cuda_visible_devices: ""
+  checkpoint_every_steps: 125
+  checkpoint_keep_last: null
+  ephemeral_checkpoint_every_steps: null
+  pre_train_checkpoint: true
+  save_async: true

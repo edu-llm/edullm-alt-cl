@@ -14,7 +14,9 @@ DATA_BUCKET = "edullm-data"
 LEGACY_DATA_BUCKET = "edullm-datasets"
 
 DEFAULT_REGMIX_DATASET_ID = "pretrain/regmix-10b"
-DEFAULT_HQ_DATASET_ID = "pretrain/hq-frontload-100m"
+DEFAULT_MATH_DATASET_ID = "pretrain/math-frontload-100m"
+# Back-compat alias
+DEFAULT_HQ_DATASET_ID = DEFAULT_MATH_DATASET_ID
 
 
 def default_data_cache_dir() -> Path:
@@ -78,7 +80,7 @@ def resolve_published_split(
         raise SystemExit(
             f"no published version of {dataset_id!r} under "
             f"s3://{DATA_BUCKET}/_catalog/ — publish+validate before training "
-            f"(see DATASET-DESIGN.md for {DEFAULT_HQ_DATASET_ID})"
+            f"(see DATASET-DESIGN.md for {DEFAULT_MATH_DATASET_ID})"
         )
     resolved = dataset_paths(dataset_id, ver, split=split, s3=s3)
     if not resolved.paths:

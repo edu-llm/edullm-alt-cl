@@ -1,0 +1,55 @@
+# Tiny plumbing smoke for alt-cl OLMo-core wiring (not a scientific run).
+
+run_id: alt-cl-smoke-v1
+seed: 42069666
+output_dir: alt_cl/data/smoke
+arm: math-front-anneal
+
+data:
+  regmix_dataset_id: pretrain/regmix-10b
+  math_dataset_id: pretrain/math-frontload-100m
+  tokenizer: allenai/dolma2-tokenizer
+  sequence_length: 2048
+  # Local path overrides for smoke without published math corpus.
+  allow_missing_math: true
+
+s3:
+  checkpoint_bucket: sbsandbox-intern-edullm-outputs
+  prefix: teams/scratch/alt-cl/smoke-v1
+  profile: sbsandbox
+
+model:
+  name: OLMo-2-370M-alt-cl-smoke
+  arch: olmo2_370M
+  init_mode: scratch
+  init_seed: 42069666
+  load_path: null
+
+olmo_core:
+  repository: https://github.com/edu-llm/OLMo-core
+  revision: 99e0009ed67679c90da970ec5ba439c9459e3757
+
+phases:
+  warmup_steps: 2
+  front_math_steps: 2
+  anneal_window_steps: 4
+  anneal_math_steps: 2
+
+train:
+  # 12 steps × 4_194_304 (smoke schedule: 2 warmup + 2 front + 4 bulk + 4 anneal
+  # with regmix_steps = max_tokens/GBS - front = 10)
+  max_tokens: 50331648
+  global_batch_size: 4194304
+  lr: 4.0e-4
+  warmup_steps: 2
+  lr_alpha_f: 1.0
+  data_loader_seed: 42069666
+  rank_microbatch_size: 65536
+  num_workers: 0
+  compile_model: false
+  cuda_visible_devices: ""
+  checkpoint_every_steps: 4
+  checkpoint_keep_last: 2
+  ephemeral_checkpoint_every_steps: null
+  pre_train_checkpoint: true
+  save_async: false

@@ -2,6 +2,9 @@
 torch>=2.4
 numpy>=1.26
 boto3>=1.34
+PyYAML>=6.0
+# Prefer the edu-llm fork at the revision pinned in configs/*.yaml:
+#   pip install -e /path/to/edu-llm/OLMo-core
 ai2-olmo-core>=2.1
 edullm-data @ git+https://github.com/edu-llm/edullm-data@v0.6.3
 

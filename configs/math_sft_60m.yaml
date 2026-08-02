@@ -1,0 +1,42 @@
+# Identical math SFT for both pretrain arms (~60M Dolma2 tokens, prompt-masked).
+# Point --load-path at each arm's final pretrain checkpoint.
+
+run_id: math-sft-60m-v1
+seed: 42069666
+output_dir: alt_cl/data/math_sft_60m
+
+data:
+  sft_path: artifacts/math-sft-60m/train.jsonl.gz
+  tokenizer: allenai/dolma2-tokenizer
+  sequence_length: 2048
+  # Optional smoke: max_examples: 512
+
+s3:
+  checkpoint_bucket: sbsandbox-intern-edullm-outputs
+  prefix: teams/pre-training/alt-cl/math-sft-60m-v1
+  profile: sbsandbox
+
+model:
+  name: OLMo-2-370M-math-sft
+  arch: olmo2_370M
+  init_seed: 42069666
+
+olmo_core:
+  repository: https://github.com/edu-llm/OLMo-core
+  revision: 99e0009ed67679c90da970ec5ba439c9459e3757
+
+train:
+  # 228 steps × GBS=262144 = 59_768_832 (~60M budget); smaller than pretrain GBS.
+  max_tokens: 59768832
+  global_batch_size: 262144
+  lr: 1.0e-4
+  warmup_steps: 50
+  lr_alpha_f: 0.1
+  rank_microbatch_size: 16384
+  compile_model: true
+  cuda_visible_devices: ""
+  checkpoint_every_steps: 25
+  checkpoint_keep_last: null
+  ephemeral_checkpoint_every_steps: null
+  pre_train_checkpoint: true
+  save_async: true

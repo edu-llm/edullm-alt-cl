@@ -9,9 +9,11 @@ wandb/
 *.npy
 .cache/
 data/
+alt_cl/data/
 scratch/
 ckpts/
 progress/
+artifacts/
 _ref_*.py
 edullm-data-cache/
 .pytest_cache/
