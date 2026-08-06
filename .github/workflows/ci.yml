@@ -1,0 +1,122 @@
+name: CI
+
+# Nothing in this repository ran a test on a pull request before this file.
+#
+# That is easy to get wrong by reading the directory listing, because
+# `edullm-platform-build.yml` does run `pytest` -- as a gate on the image build, on pushes to
+# `edullm/**` and to `main`. So `main` was covered and a pull request was not, which is the
+# wrong way round: the point of running a suite is to see a failure before it is merged, not
+# after.
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  # Unrestricted, rather than `branches: [main]`. The restricted form -- what OLMo-core uses
+  # -- gives no CI at all to a pull request between two feature branches, and a curriculum
+  # experiment is exactly the kind of work that stacks one branch on another for a week.
+  pull_request:
+  # `main` as well, even though the image build already runs `pytest` there. The overlap is
+  # about ten seconds and it buys a separable answer: when the build workflow goes red you
+  # currently cannot tell whether the suite failed or whether AWS refused something.
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 is the floor `pyproject.toml` declares; 3.12 is what the registered base image
+        # ships (`config/repositories.yaml` in edu-llm/platform). Both confirmed passing
+        # before this landed.
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # `.[dev]` is numpy, PyYAML and pytest -- seconds, no CUDA, no OLMo-core. The `train`
+      # extra is deliberately NOT installed: it pulls torch and ai2-olmo-core, which is
+      # gigabytes for a runner that cannot use either.
+      - name: Install
+        run: python -m pip install --disable-pip-version-check ".[dev]"
+
+      # `-rs` so the skips are printed rather than counted. Three tests skip here without
+      # torch or a cluster (`test_olmo_integration`, and one case each in `test_sft_data` and
+      # `test_streams`), and a suite that quietly skips is the failure mode this job exists to
+      # avoid -- 34 of 37 running is a fact worth reading in the log, not inferring from a
+      # green tick.
+      - name: Run tests
+        run: python -m pytest -q -rs
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # Pinned. An unpinned linter fails on a morning when nobody changed anything, and that
+      # is how people learn to ignore a red check.
+      - name: Install ruff
+        run: python -m pip install --disable-pip-version-check ruff==0.15.22
+
+      # A RATCHET, NOT A GATE.
+      #
+      # `ruff check` reports eight findings on this tree: three `E741` (a variable named `l`)
+      # in `tests/test_sft_data.py`, four unused imports across `scripts/` and
+      # `alt_cl/olmo_ext/sft_trainer_build.py`, and one `E731` lambda assignment in
+      # `alt_cl/olmo_ext/callbacks.py`. None is a bug. Failing on them would mean this
+      # repository is red the day everyone arrives, and three of the eight are inside tests,
+      # which whoever adds this workflow has no business rewriting.
+      #
+      # So it does not fail on them. It fails on the NINTH. `continue-on-error: true` was
+      # rejected: a check that reports and cannot fail occupies the space a real one would
+      # take, and nobody reads it twice.
+      #
+      # No `[tool.ruff]` table is added to `pyproject.toml`. The default rule set is pyflakes
+      # plus a few pycodestyle errors, which finds dead code rather than expressing a style
+      # opinion this repository has not taken. `ruff format` is not run for the same reason:
+      # 20 of 38 files would be reformatted, which is a decision for the owners.
+      #
+      # TO MAKE THIS BLOCKING: `ruff check --fix` clears three of the eight on its own; the
+      # `l` renames and the lambda are a few minutes each. Then set BASELINE to 0.
+      - name: Run ruff against the baseline
+        env:
+          BASELINE: "8"
+        run: |
+          set -uo pipefail
+          ruff check --no-cache --output-format concise . || true
+          ruff check --no-cache --output-format json . > ruff.json || true
+          count="$(python -c 'import json; print(len(json.load(open("ruff.json"))))')"
+
+          {
+            echo "## ruff"
+            echo
+            echo "Findings: \`${count}\`. Baseline: \`${BASELINE}\`."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          if [ "${count}" -gt "${BASELINE}" ]; then
+            echo "::error::ruff reports ${count} findings, above the baseline of ${BASELINE}." \
+                 "This change introduced $(( count - BASELINE )) new one(s)."
+            exit 1
+          fi
+
+          if [ "${count}" -lt "${BASELINE}" ]; then
+            echo "::notice::ruff reports ${count} findings, below the baseline of ${BASELINE}." \
+                 "Lower BASELINE in .github/workflows/ci.yml to hold the ground you just took."
+          fi
+
+          echo "ruff is at or below the baseline (${count} <= ${BASELINE})."
