@@ -23,7 +23,7 @@ CorpusName = Literal["regmix", "math", "mix"]
 
 GLOBAL_BATCH_TOKENS = 4_194_304
 REGMIX_STEPS = 2384  # full normal ~10B regmix-scheduled run
-FRONT_MATH_STEPS = 24  # ~100M exclusive math (treatment only)
+FRONT_MATH_STEPS = 25  # ~100M exclusive math (treatment only)
 ANNEAL_MATH_STEPS = 24  # ~100M math *mass* inside the anneal window (both arms)
 # Last ~500M tokens: integral of linear 0→p_max equals ANNEAL_MATH_STEPS
 # (mean mix ~20%, peak ~40%)
