@@ -38,29 +38,42 @@ profile, no SSO session and no VPN, for anything on this path.
 
 | Verb | What it does |
 | --- | --- |
-| `edullm check` | Prices a submission from this working tree and lists every refusal. Reaches no network. |
-| `edullm submit` | Runs those checks and dispatches the submission workflow. |
-| `edullm status` | Names your recent submissions, or describes one run. |
-| `edullm logs` | The last lines one run printed. |
-| `edullm cancel` | Stops one admitted run, with a reason that goes on the record. |
-| `edullm add` | Teaches the platform about a repository, dataset, shape, model or person. |
-| `edullm ask` | Files one ask for something you need yourself. |
-| `edullm run` / `edullm shell` | Ships this tree to a machine of your own. Ungated, and no run anybody can cite. |
+| `edullm check` | Prices a submission from this working tree and lists every refusal. Reaches no network. Writes a first `.edullm/run.yaml` where a registered repository has none |
+| `edullm submit` | Makes those same checks and then dispatches the submission workflow |
+| `edullm status` | Your recent submissions, or one run described |
+| `edullm logs` | The last lines one run printed |
+| `edullm cancel` | Stops one admitted run, with a reason that goes on the record |
+| `edullm data` | The registered corpora, and which of them a run can actually start |
+| `edullm add` | Teaches the platform about a repository. Produces a configuration pull request |
+| `edullm ask` | Files an ask for something you need. Produces an issue somebody answers |
+| `edullm run` | Ships this working tree to a machine of your own and streams back the output of the command after a bare `--` |
+| `edullm shell` | A terminal on that same machine, or a notebook on it with `--notebook` |
+| `edullm stop` | Ends the machine those two started, and says what it ran up and where your files are |
+| `edullm studio` | Opens the Studio space for one `--project` in your browser. Bare, it lists your spaces; `--stop` ends compute and keeps the disk |
+| `edullm console` | Opens the AWS console in your browser, signed in as you |
 
-`edullm <verb> --help` prints what that verb takes. The last two are the exploration route
-and not the submission path: nothing on them is checked, priced, approved or recorded.
+`edullm <verb> --help` prints what each verb takes; this file covers what the help cannot.
+
+`run`, `shell`, `stop`, `studio` and `console` are the exploration route and not the
+submission path. Nothing on it is checked against the registry, priced, approved or written to
+a lineage record, so what comes off it is a thing somebody saw rather than a result anybody
+can cite. Reach for `check` and `submit` for anything meant to count. **`edullm run` and
+`edullm shell` leave a machine of your own running, and `edullm stop` is what ends it** — it
+terminates rather than stopping, so the machine's own disk goes with it while the scratch
+prefix survives for the next one.
 
 **Start with `edullm check --json`.** It costs a fraction of a second, reaches no network and
 lists every refusal at once. **Match on `code`** and act on the `detail` beside it, which
 names the field and usually the file; the detail is written for a person and gets reworded, so
 do not match on it. Exit 0 stands, 1 is refused on the merits, 2 means the command or the
-install is wrong, 3 means the platform could not be asked and is the only one worth retrying.
+install is wrong, 3 means the platform could not be asked and is the only one worth retrying,
+and 130 is an interrupt and wants nothing done about it.
 
 **Read stdout on its own.** The first check in a repository with no `.edullm/run.yaml` writes
 one and says so on stderr, so `edullm check --json 2>&1 | ...` turns that note into a parse
 error on the one run where you least want one.
 
-Four things the refusals will not tell you until they have cost something.
+Things the refusals will not tell you until they have cost something.
 
 - **The platform takes a commit, not a working tree.** The image is built from the last
   commit, so anything uncommitted is not part of the run, and it is a push to a branch named
@@ -68,14 +81,27 @@ Four things the refusals will not tell you until they have cost something.
 - **For `--dataset`, absent and `none` are different answers.** Pass the literal word `none`
   where the run reads no corpus, which is what a smoke test, a tokenization or an evaluation
   over existing checkpoints does. Only one of the two is a statement.
+- **Pick the corpus with `edullm data` and never off a refusal.** It reaches no network and
+  carries what a chooser needs per corpus: train tokens, the tokenizer, the shard dtype, the
+  licence, and whether a run naming it will start. **That last one is not the same as
+  registered, and the gap costs a machine** — a corpus this platform can resolve and the
+  training image cannot build is refused by nothing before the money is spent. The
+  `unregistered_dataset` refusal prints names and cannot tell you that, and neither can a
+  table in a document. `edullm data --json` puts it under `verdict` for a script to branch on.
 - **Write the dtype into the command.** The guard behind `bfloat16_not_in_the_hardware` reads
   the text of the command and cannot see a precision the program sets in code, so a card with
   no bfloat16 in hardware refuses the first kernel that needs it — after the run has been
   priced, released, admitted and given a machine. Naming it turns a dead machine into a free
   refusal: `bash -lc 'python train.py train_module.dp_config.param_dtype=bfloat16'`.
-- **`edullm status --json` is free and `edullm status` is not.** The former answers from
-  GitHub, dispatches nothing and may be polled. Without `--json`, and `edullm logs`, a
-  workflow has to start, so both are slow by construction and neither belongs in a loop.
+- **`edullm status --json` is free and may be polled.** It answers from GitHub and dispatches
+  nothing, ever. Read `needs_a_dispatch`: where it is true the rest of the answer has moved
+  into AWS, and `edullm status <run-id>` without `--json`, or `edullm logs`, is what pays a
+  workflow for it. Those two are slow by construction and neither belongs in a loop.
+- **A run id neither form can find is refused rather than asked after.** `run_id_not_found`
+  means the window this searched carries no such run, which is not the same as the run not
+  existing — a real one can sit outside it. `--ask-aws` on `status` or `logs` buys the certain
+  answer and spends a runner for it. `edullm cancel` is the exception and asks AWS every time
+  with no flag, because refusing to stop a job that turns out to be running is worse.
 
 **Never quote a price, a runtime bound, a cost ceiling or who has to approve something from
 memory or from a document, this one included.** Those live in reviewed configuration that
