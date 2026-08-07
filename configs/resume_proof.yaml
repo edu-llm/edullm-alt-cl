@@ -116,12 +116,25 @@ train:
   # 44.11 of 44.39 GiB. Both had already staged the corpus, built the model and written the
   # step-0 checkpoint, so this is the second wall behind the disk one and not the same wall.
   #
-  # 8,192 leaves the optimizer arithmetic untouched. global_batch_size is still 65,536, so a
-  # step is still a step and the losses this proof compares are the same numbers they would
-  # have been; what changes is that the step is taken in eight accumulated pieces. Reaching
-  # for bfloat16 instead would also fit, and would change the numerics of the very curve the
-  # demonstration reads, which is a worse trade for the same GiB.
-  rank_microbatch_size: 8192
+  # 8,192 was tried next and moved the wall rather than clearing it: run_019fde67-... reached
+  # the language-model head and died in cross_entropy allocating 3.06 GiB, which is one
+  # 8,192 x 100,278 logit tensor in fp32. The vocabulary is what makes the head, rather than
+  # the blocks, the largest single allocation in this model.
+  #
+  # 2,048 IS ONE SEQUENCE, AND THE OPTIMIZER ARITHMETIC IS UNTOUCHED AT EITHER VALUE.
+  # global_batch_size is still 65,536, so a step is still a step and the losses this proof
+  # compares are the same numbers they would have been; what changes is that the step is taken
+  # in thirty-two accumulated pieces instead of one. Reaching for bfloat16 instead would also
+  # fit, and would change the numerics of the very curve the demonstration reads, which is a
+  # worse trade for the same GiB.
+  #
+  # THIS IS NOT A CRITICISM OF THE OTHER CONFIGS AND IS WORTH SAYING PLAINLY. smoke.yaml and
+  # both 10b configs also set 65,536, and at fp32 that wants roughly 20 GiB of the card before
+  # the head allocates. It is a reasonable number on an 80 GB A100, which is the hardware this
+  # repository's own READMEs quote device-hours in. It is not a reasonable number on the two
+  # cards this platform offers one process, and nothing in this repository has yet run on
+  # either.
+  rank_microbatch_size: 2048
   num_workers: 0
   compile_model: false
   cuda_visible_devices: ""
