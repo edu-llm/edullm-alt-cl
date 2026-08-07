@@ -12,10 +12,11 @@
 # a failed run look failed; CloudWatch already keeps every line it printed, so the summary was
 # bought at the price of the exit code and was not worth it.
 #
-# One process because `configs/resume_proof.yaml` sets rank_microbatch_size equal to
-# global_batch_size. A launcher starting one process per device is right for the 10b configs
-# and would silently multiply the effective batch here, so the single-GPU shapes are the ones
-# this spec suggests.
+# One process because `configs/resume_proof.yaml` accumulates its global batch on one rank.
+# A launcher starting one process per device is right for the 10b configs and would silently
+# multiply the effective batch here, so the single-GPU shapes are the ones this spec suggests.
+# gpu-1xa10g rather than a larger card because the config now fits one: see the microbatch
+# note in that file for the two runs that measured where it does not.
 schema_version: 1
 workload_profile: edullm-alt-cl-train
 suggested_compute: gpu-1xa10g

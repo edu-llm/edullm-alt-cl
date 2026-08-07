@@ -107,7 +107,21 @@ train:
   # Decaying, deliberately. See the note at the top of this file.
   lr_alpha_f: 0.1
   data_loader_seed: 42069666
-  rank_microbatch_size: 65536
+  # EIGHT MICROBATCHES PER STEP, AND THE SINGLE ONE THIS REPLACED FIT NO CARD THE PLATFORM
+  # HAS. 65,536 tokens in one microbatch is 32 sequences of 2,048 through a 370M model in
+  # fp32 -- nothing here sets param_dtype -- and the activations alone come to roughly 38 GiB
+  # on top of about 6 GiB of weights, gradients and Adam state. Measured, not estimated:
+  # run_019fde55-165a-707e-b022-12e40a5fb737 died with torch.OutOfMemoryError on gpu-1xa10g
+  # with 21.89 of 22.06 GiB in use, and run_019fde5b-... died the same way on gpu-1xl40s with
+  # 44.11 of 44.39 GiB. Both had already staged the corpus, built the model and written the
+  # step-0 checkpoint, so this is the second wall behind the disk one and not the same wall.
+  #
+  # 8,192 leaves the optimizer arithmetic untouched. global_batch_size is still 65,536, so a
+  # step is still a step and the losses this proof compares are the same numbers they would
+  # have been; what changes is that the step is taken in eight accumulated pieces. Reaching
+  # for bfloat16 instead would also fit, and would change the numerics of the very curve the
+  # demonstration reads, which is a worse trade for the same GiB.
+  rank_microbatch_size: 8192
   num_workers: 0
   compile_model: false
   cuda_visible_devices: ""
