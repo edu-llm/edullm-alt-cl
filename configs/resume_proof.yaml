@@ -34,9 +34,38 @@ output_dir: alt_cl/data/resume-proof
 arm: math-front-anneal
 
 data:
-  regmix_dataset_id: pretrain/regmix-10b
-  # The math corpus is not published, and a resume demonstration is about the trainer's state
-  # rather than about the mixture, so this runs on regmix alone as `smoke.yaml` does.
+  # BOTH IDS NAME THE SAME CORPUS, AND THAT IS THE PLATFORM'S DISK RATHER THAN A TYPO.
+  # `stage_edullm_uris` downloads every shard of a resolved split to container-local disk
+  # before the first step. A Batch job on this platform gets the ECS GPU AMI's 30 GiB root
+  # volume, of which roughly 13 GiB is free once the operating system and this image are on
+  # it, and no shape offers more to a single-process trainer: the only two compute
+  # environments carrying a larger volume are eight-GPU p-family ones, and the platform
+  # refuses a one-process command on those. regmix-10b is 40,019,228,164 bytes -- 37.3 GiB,
+  # larger than the whole volume -- so pointing `regmix_dataset_id` at it does not make a
+  # slow run, it makes `OSError: [Errno 28] No space left on device` in `stage_edullm_uris`
+  # before step 1. Run run_019fde29-d2c5-709c-a4c9-afd26020cb3f died exactly there.
+  #
+  # math-frontload-100m is 400,080,028 bytes over three shards and is the only corpus
+  # published on `tokenizer/dolma2-bpe` that fits. The other eight -- regmix-10b,
+  # frontload-cl-10b, refhq-regmix-5p5b, refhq-instruct, olmo-original-30b, olmo-127b,
+  # olmo-150b-dolma2 and reservoir-dolma2 -- run from 19.6 GiB to 935.9 GiB. So this is not
+  # a corpus chosen from a shortlist; it is the shortlist.
+  #
+  # WHAT THAT COSTS THE DEMONSTRATION, STATED RATHER THAN GLOSSED. Phase D mixes the two
+  # corpora, and when they resolve to the same three files a data loader that restored one
+  # cursor and reset the other would still read the same tokens, so this run cannot catch
+  # that particular fault. It still catches everything the proof is mainly for: a model
+  # restored without its optimizer, a learning-rate schedule that restarted (which is what
+  # `lr_alpha_f` below is for), and a loader that resumed at the wrong offset. Losses
+  # matching across the shared steps remains the standard.
+  #
+  # THE FIX THIS IS STANDING IN FOR IS NOT HERE. Either this repository stages in proportion
+  # to what it consumes -- 44 steps at 65,536 tokens is 2,883,584 tokens, 11.5 MB against the
+  # 37.3 GiB it was asking for -- or it streams shards as OLMo-core does, which is how
+  # OLMo-core trains on regmix-10b on gpu-1xa10g today. Until one of those lands, or the
+  # platform provisions a root volume on the shapes a single process can use, this config is
+  # what a resume demonstration can actually run.
+  regmix_dataset_id: pretrain/math-frontload-100m
   math_dataset_id: pretrain/math-frontload-100m
   tokenizer: allenai/dolma2-tokenizer
   sequence_length: 2048
@@ -78,7 +107,34 @@ train:
   # Decaying, deliberately. See the note at the top of this file.
   lr_alpha_f: 0.1
   data_loader_seed: 42069666
-  rank_microbatch_size: 65536
+  # EIGHT MICROBATCHES PER STEP, AND THE SINGLE ONE THIS REPLACED FIT NO CARD THE PLATFORM
+  # HAS. 65,536 tokens in one microbatch is 32 sequences of 2,048 through a 370M model in
+  # fp32 -- nothing here sets param_dtype -- and the activations alone come to roughly 38 GiB
+  # on top of about 6 GiB of weights, gradients and Adam state. Measured, not estimated:
+  # run_019fde55-165a-707e-b022-12e40a5fb737 died with torch.OutOfMemoryError on gpu-1xa10g
+  # with 21.89 of 22.06 GiB in use, and run_019fde5b-... died the same way on gpu-1xl40s with
+  # 44.11 of 44.39 GiB. Both had already staged the corpus, built the model and written the
+  # step-0 checkpoint, so this is the second wall behind the disk one and not the same wall.
+  #
+  # 8,192 was tried next and moved the wall rather than clearing it: run_019fde67-... reached
+  # the language-model head and died in cross_entropy allocating 3.06 GiB, which is one
+  # 8,192 x 100,278 logit tensor in fp32. The vocabulary is what makes the head, rather than
+  # the blocks, the largest single allocation in this model.
+  #
+  # 2,048 IS ONE SEQUENCE, AND THE OPTIMIZER ARITHMETIC IS UNTOUCHED AT EITHER VALUE.
+  # global_batch_size is still 65,536, so a step is still a step and the losses this proof
+  # compares are the same numbers they would have been; what changes is that the step is taken
+  # in thirty-two accumulated pieces instead of one. Reaching for bfloat16 instead would also
+  # fit, and would change the numerics of the very curve the demonstration reads, which is a
+  # worse trade for the same GiB.
+  #
+  # THIS IS NOT A CRITICISM OF THE OTHER CONFIGS AND IS WORTH SAYING PLAINLY. smoke.yaml and
+  # both 10b configs also set 65,536, and at fp32 that wants roughly 20 GiB of the card before
+  # the head allocates. It is a reasonable number on an 80 GB A100, which is the hardware this
+  # repository's own READMEs quote device-hours in. It is not a reasonable number on the two
+  # cards this platform offers one process, and nothing in this repository has yet run on
+  # either.
+  rank_microbatch_size: 2048
   num_workers: 0
   compile_model: false
   cuda_visible_devices: ""
