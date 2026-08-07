@@ -1,0 +1,24 @@
+# The command and the workload profile, which are properties of this code and travel with it
+# in git. The machine, the corpus and the experiment are supplied at submit time, because one
+# commit run by two people belongs to two teams.
+#
+# THE COMMAND IS ONE PROCESS AND NOTHING WRAPS IT, WHICH IS A CORRECTION RATHER THAN A STYLE.
+# The first submission ever made for this repository ran the trainer inside
+# `... >/tmp/r.log 2>&1; echo "exit=$?"; ... ; tail -30 /tmp/r.log` so that a reader would get
+# a tidy summary. The trainer exited 1 on an out-of-disk error; `tail` exited 0; bash reported
+# the last command's status, Batch recorded exit code 0, and the platform's lineage store still
+# says run_019fde29-d2c5-709c-a4c9-afd26020cb3f succeeded. Nothing downstream can tell that run
+# from one that trained. Letting the trainer be the last command in the pipeline is what makes
+# a failed run look failed; CloudWatch already keeps every line it printed, so the summary was
+# bought at the price of the exit code and was not worth it.
+#
+# One process because `configs/resume_proof.yaml` sets rank_microbatch_size equal to
+# global_batch_size. A launcher starting one process per device is right for the 10b configs
+# and would silently multiply the effective batch here, so the single-GPU shapes are the ones
+# this spec suggests.
+schema_version: 1
+workload_profile: edullm-alt-cl-train
+suggested_compute: gpu-1xa10g
+command: >-
+  bash -lc 'python .edullm/train_pretrain.py "$EDULLM_RUN_ID" --config
+  configs/resume_proof.yaml --save-folder "$EDULLM_CHECKPOINT_DIR"'

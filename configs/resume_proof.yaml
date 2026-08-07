@@ -34,9 +34,38 @@ output_dir: alt_cl/data/resume-proof
 arm: math-front-anneal
 
 data:
-  regmix_dataset_id: pretrain/regmix-10b
-  # The math corpus is not published, and a resume demonstration is about the trainer's state
-  # rather than about the mixture, so this runs on regmix alone as `smoke.yaml` does.
+  # BOTH IDS NAME THE SAME CORPUS, AND THAT IS THE PLATFORM'S DISK RATHER THAN A TYPO.
+  # `stage_edullm_uris` downloads every shard of a resolved split to container-local disk
+  # before the first step. A Batch job on this platform gets the ECS GPU AMI's 30 GiB root
+  # volume, of which roughly 13 GiB is free once the operating system and this image are on
+  # it, and no shape offers more to a single-process trainer: the only two compute
+  # environments carrying a larger volume are eight-GPU p-family ones, and the platform
+  # refuses a one-process command on those. regmix-10b is 40,019,228,164 bytes -- 37.3 GiB,
+  # larger than the whole volume -- so pointing `regmix_dataset_id` at it does not make a
+  # slow run, it makes `OSError: [Errno 28] No space left on device` in `stage_edullm_uris`
+  # before step 1. Run run_019fde29-d2c5-709c-a4c9-afd26020cb3f died exactly there.
+  #
+  # math-frontload-100m is 400,080,028 bytes over three shards and is the only corpus
+  # published on `tokenizer/dolma2-bpe` that fits. The other eight -- regmix-10b,
+  # frontload-cl-10b, refhq-regmix-5p5b, refhq-instruct, olmo-original-30b, olmo-127b,
+  # olmo-150b-dolma2 and reservoir-dolma2 -- run from 19.6 GiB to 935.9 GiB. So this is not
+  # a corpus chosen from a shortlist; it is the shortlist.
+  #
+  # WHAT THAT COSTS THE DEMONSTRATION, STATED RATHER THAN GLOSSED. Phase D mixes the two
+  # corpora, and when they resolve to the same three files a data loader that restored one
+  # cursor and reset the other would still read the same tokens, so this run cannot catch
+  # that particular fault. It still catches everything the proof is mainly for: a model
+  # restored without its optimizer, a learning-rate schedule that restarted (which is what
+  # `lr_alpha_f` below is for), and a loader that resumed at the wrong offset. Losses
+  # matching across the shared steps remains the standard.
+  #
+  # THE FIX THIS IS STANDING IN FOR IS NOT HERE. Either this repository stages in proportion
+  # to what it consumes -- 44 steps at 65,536 tokens is 2,883,584 tokens, 11.5 MB against the
+  # 37.3 GiB it was asking for -- or it streams shards as OLMo-core does, which is how
+  # OLMo-core trains on regmix-10b on gpu-1xa10g today. Until one of those lands, or the
+  # platform provisions a root volume on the shapes a single process can use, this config is
+  # what a resume demonstration can actually run.
+  regmix_dataset_id: pretrain/math-frontload-100m
   math_dataset_id: pretrain/math-frontload-100m
   tokenizer: allenai/dolma2-tokenizer
   sequence_length: 2048
