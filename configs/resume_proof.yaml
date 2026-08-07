@@ -1,0 +1,90 @@
+# The configuration a resume demonstration runs, and nothing else.
+#
+# WHY THIS IS NOT configs/smoke.yaml. The platform refuses `--attempts 2` for a repository
+# nobody has watched resume, and clearing that refusal means submitting a run whose second
+# process reports loading a step above zero and going on past it. Every shipped config is the
+# wrong shape for that. `smoke.yaml` runs twelve steps at a 4,194,304-token global batch,
+# which on one A10G is about an hour of compute to produce two checkpoints; the 10b configs
+# checkpoint every 125 steps, which is longer still. Neither is expensive because it is
+# thorough -- the cost is entirely in tokens that a resume demonstration does not need.
+#
+# So this config keeps every knob that decides *whether* resume works and shrinks only the
+# ones that decide how long it takes to find out. The global batch is one microbatch, which
+# makes a step about four seconds, and forty-four steps with a checkpoint every four produces
+# eleven of them in a few minutes for around a dollar.
+#
+# TWO CHOICES HERE ARE LOAD-BEARING AND MUST NOT BE "TIDIED".
+#
+# `checkpoint_keep_last: null` keeps every checkpoint rather than the last two. A cross-run
+# demonstration seeds a second submission from a checkpoint in the *middle* of the schedule and
+# compares its losses against the first run's over the steps that follow. Keeping only the last
+# two leaves nothing mid-schedule to seed from, and a resume from the final checkpoint has
+# almost no overlapping steps to compare -- which is the weak evidence the platform's guard
+# exists to stop accepting.
+#
+# `lr_alpha_f: 0.1` decays the learning rate instead of holding it flat. `smoke.yaml` uses 1.0,
+# and under a constant schedule a run that silently restarted its scheduler is indistinguishable
+# from one that restored it, because both report the same number. With decay, a restarted
+# schedule is back in warmup and reads visibly wrong at the step it resumed from. The flat
+# setting would make the demonstration easier to pass and worth less.
+
+run_id: alt-cl-resume-proof-v1
+seed: 42069666
+output_dir: alt_cl/data/resume-proof
+arm: math-front-anneal
+
+data:
+  regmix_dataset_id: pretrain/regmix-10b
+  # The math corpus is not published, and a resume demonstration is about the trainer's state
+  # rather than about the mixture, so this runs on regmix alone as `smoke.yaml` does.
+  math_dataset_id: pretrain/math-frontload-100m
+  tokenizer: allenai/dolma2-tokenizer
+  sequence_length: 2048
+  allow_missing_math: true
+
+s3:
+  checkpoint_bucket: sbsandbox-intern-edullm-outputs
+  # Unused on the platform: --save-folder is $EDULLM_CHECKPOINT_DIR, which the platform derives
+  # per run. Carried so the config is runnable off-platform too.
+  prefix: teams/scratch/alt-cl/resume-proof-v1
+  profile: sbsandbox
+
+model:
+  name: OLMo-2-370M-alt-cl-resume-proof
+  arch: olmo2_370M
+  init_mode: scratch
+  init_seed: 42069666
+  load_path: null
+
+olmo_core:
+  repository: https://github.com/edu-llm/OLMo-core
+  revision: 99e0009ed67679c90da970ec5ba439c9459e3757
+
+# 44 scheduled steps: regmix_steps = 44 - front_math_steps = 40, of which 4 are warmup and the
+# last 12 are the anneal window, leaving 24 bulk steps. phase_boundaries() refuses an anneal
+# window that leaves no bulk after warmup, so these four numbers are not independent.
+phases:
+  warmup_steps: 4
+  front_math_steps: 4
+  anneal_window_steps: 12
+  anneal_math_steps: 4
+
+train:
+  # 44 steps x 65,536 tokens. total_steps is max_tokens // global_batch_size.
+  max_tokens: 2883584
+  global_batch_size: 65536
+  lr: 4.0e-4
+  warmup_steps: 4
+  # Decaying, deliberately. See the note at the top of this file.
+  lr_alpha_f: 0.1
+  data_loader_seed: 42069666
+  rank_microbatch_size: 65536
+  num_workers: 0
+  compile_model: false
+  cuda_visible_devices: ""
+  checkpoint_every_steps: 4
+  # Every checkpoint, deliberately. See the note at the top of this file.
+  checkpoint_keep_last: null
+  ephemeral_checkpoint_every_steps: null
+  pre_train_checkpoint: true
+  save_async: false
